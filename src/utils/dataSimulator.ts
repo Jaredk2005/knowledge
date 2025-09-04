@@ -238,3 +238,26 @@ export function correlateAlerts(alerts: Alert[]): Alert[] {
   
   return correlatedAlerts;
 }
+
+// Function to transform database incident to app incident format
+function transformDbIncidentToAppIncident(dbIncident: any): Incident {
+  console.log('Transforming incident:', dbIncident)
+  
+  // Safety checks
+  if (!dbIncident || !dbIncident.id) {
+    throw new Error('Invalid incident data: missing id')
+  }
+  
+  return {
+    id: dbIncident.id,
+    timestamp: new Date(dbIncident.created_at || dbIncident.detected_at || Date.now()),
+    type: dbIncident.incident_type as any,
+    severity: dbIncident.severity as any,
+    source: dbIncident.source_ip || dbIncident.source_system || 'Unknown',
+    target: dbIncident.destination_ip || dbIncident.target_system || 'Unknown',
+    description: dbIncident.description || 'No description available',
+    status: dbIncident.status as any,
+    responseActions: [], // Will be populated from incident_actions table if needed
+    affectedSystems: dbIncident.affected_systems || []
+  }
+}
