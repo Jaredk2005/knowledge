@@ -38,6 +38,10 @@ export function SystemStatus({ systems }: SystemStatusProps) {
   };
 
   const onlineCount = systems.filter(s => s.status === 'online').length;
+  
+  // Safety check for systems array
+  const safeSystems = systems || [];
+  const safeOnlineCount = safeSystems.filter(s => s && s.status === 'online').length;
 
   return (
     <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
@@ -47,12 +51,12 @@ export function SystemStatus({ systems }: SystemStatusProps) {
           System Status
         </h2>
         <div className="text-sm text-gray-400">
-          {onlineCount}/{systems.length} Online
+          {safeOnlineCount}/{safeSystems.length} Online
         </div>
       </div>
 
       <div className="space-y-3">
-        {systems.map((system, index) => (
+        {safeSystems.filter(system => system && system.component).map((system, index) => (
           <div key={index} className="flex items-center justify-between p-3 bg-gray-900 rounded-lg">
             <div className="flex items-center space-x-3">
               {getStatusIcon(system.status)}

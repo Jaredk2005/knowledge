@@ -50,13 +50,13 @@ export function IncidentList({ incidents }: IncidentListProps) {
       </div>
 
       <div className="space-y-3">
-        {incidents.length === 0 ? (
+        {!incidents || incidents.length === 0 ? (
           <div className="text-center py-8">
             <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-3" />
             <p className="text-gray-400">No recent incidents</p>
           </div>
         ) : (
-          incidents.map((incident) => (
+          incidents.filter(incident => incident && incident.id).map((incident) => (
             <div key={incident.id} className="bg-gray-900 rounded-lg p-4">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">

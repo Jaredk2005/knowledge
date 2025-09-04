@@ -89,13 +89,13 @@ export function AlertPanel({ alerts }: AlertPanelProps) {
       </div>
 
       <div className="space-y-3 max-h-80 overflow-y-auto">
-        {displayAlerts.length === 0 ? (
+        {!displayAlerts || displayAlerts.length === 0 ? (
           <div className="text-center py-8">
             <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-3" />
             <p className="text-gray-400">No active alerts</p>
           </div>
         ) : (
-          displayAlerts.map((alert) => (
+          displayAlerts.filter(alert => alert && alert.id).map((alert) => (
             <div
               key={alert.id}
               className={`p-4 rounded-lg border ${getAlertBgColor(alert.type)} ${

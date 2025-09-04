@@ -13,6 +13,12 @@ import { CriticalIncidentsPanel } from './CriticalIncidentsPanel';
 import { useIncidentData } from '../hooks/useIncidentData';
 import { User } from '../types/user';
 
+interface DashboardProps {
+  user: User | null;
+  threats?: any[];
+  onLogout: () => void;
+}
+
 export function Dashboard({ user, onLogout }: DashboardProps) {
   const { 
     incidents, 

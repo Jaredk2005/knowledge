@@ -55,12 +55,16 @@ export function useIncidentData() {
       console.log(`📊 Fetched ${data?.length || 0} incidents from database`)
       
       if (data) {
-        const transformedIncidents = data.map(transformDbIncidentToAppIncident)
+        const transformedIncidents = data
+          .filter(incident => incident && incident.id)
+          .map(transformDbIncidentToAppIncident)
         console.log(`✅ Transformed ${transformedIncidents.length} incidents for display`)
         setIncidents(transformedIncidents)
       }
     } catch (error) {
       console.error('Failed to fetch incidents:', error)
+      // Set empty array on error to prevent crashes
+      setIncidents([])
     }
   }
 
@@ -227,19 +231,58 @@ export function useIncidentData() {
   }, [isMonitoring])
 
   async function fetchAlerts() {
-    const { data, error } = await supabase.from('alerts').select('*').order('timestamp', { ascending: false })
-    if (!error && data) setAlerts(data)
+    try {
+      const { data, error } = await supabase.from('alerts').select('*').order('timestamp', { ascending: false })
+      if (!error && data) {
+        // Transform and validate alert data
+        const validAlerts = data
+          .filter(alert => alert && alert.id)
+          .map(alert => ({
+            id: alert.id,
+            timestamp: new Date(alert.created_at || alert.timestamp),
+            message: alert.message || alert.title || 'Unknown alert',
+            type: alert.alert_type || 'info',
+            acknowledged: alert.is_acknowledged || false,
+            sourceSystem: alert.source_system || 'Unknown',
+            riskScore: alert.risk_score || 50,
+            isDuplicate: alert.is_duplicate || false,
+            relatedAlerts: []
+          }))
+        setAlerts(validAlerts)
+      } else {
+        console.error('Error fetching alerts:', error)
+        setAlerts([])
+      }
+    } catch (error) {
+      console.error('Failed to fetch alerts:', error)
+      setAlerts([])
+    }
   }
 
 
   async function fetchAlertsFromBackend() {
     try {
       const items = await fetchBackendAlerts(50)
-      if (items && items.length) {
-        setAlerts(items)
+      if (items && Array.isArray(items) && items.length) {
+        // Transform backend alerts to match frontend format
+        const transformedAlerts = items
+          .filter(item => item && (item.id || item.timestamp))
+          .map(item => ({
+            id: item.id || `backend-${Date.now()}-${Math.random()}`,
+            timestamp: new Date(item.timestamp),
+            message: item.message || 'Backend alert',
+            type: item.alert_type || 'info',
+            acknowledged: item.is_acknowledged || false,
+            sourceSystem: item.source_system || 'Backend',
+            riskScore: item.risk_score || 50,
+            isDuplicate: false,
+            relatedAlerts: []
+          }))
+        setAlerts(transformedAlerts)
       }
     } catch (e) {
       console.warn('Backend alerts fetch failed', e)
+      // Don't crash on backend failure
     }
   }
   const toggleMonitoring = () => {

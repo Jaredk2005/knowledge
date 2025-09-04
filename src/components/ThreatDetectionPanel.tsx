@@ -10,8 +10,13 @@ interface ThreatDetectionPanelProps {
 
 export function ThreatDetectionPanel({ threatDetections, anomalies }: ThreatDetectionPanelProps) {
   const { backendStats, backendConnected, blockIP } = useIncidentData();
-  const highConfidenceThreats = threatDetections.filter(t => t.confidence > 80);
-  const criticalAnomalies = anomalies.filter(a => a.severity === 'critical' || a.deviation > 300);
+  
+  // Safety checks for arrays
+  const safeThreatDetections = threatDetections || [];
+  const safeAnomalies = anomalies || [];
+  
+  const highConfidenceThreats = safeThreatDetections.filter(t => t && t.confidence > 80);
+  const criticalAnomalies = safeAnomalies.filter(a => a && (a.severity === 'critical' || a.deviation > 300));
 
   const getThreatTypeIcon = (type: string) => {
     switch (type) {
@@ -80,13 +85,13 @@ export function ThreatDetectionPanel({ threatDetections, anomalies }: ThreatDete
           </div>
           <div className="bg-gray-900 rounded-lg p-4">
             <div className="text-orange-400 text-2xl font-bold">
-              {backendStats?.total_threats || threatDetections.filter(t => t.threatType === 'ml_detection').length}
+              {backendStats?.total_threats || safeThreatDetections.filter(t => t && t.threatType === 'ml_detection').length}
             </div>
             <div className="text-gray-400 text-sm">Total Threats</div>
           </div>
           <div className="bg-gray-900 rounded-lg p-4">
             <div className="text-purple-400 text-2xl font-bold">
-              {backendStats?.blocked_ips || threatDetections.filter(t => t.threatType === 'behavioral_anomaly').length}
+              {backendStats?.blocked_ips || safeThreatDetections.filter(t => t && t.threatType === 'behavioral_anomaly').length}
             </div>
             <div className="text-gray-400 text-sm">Blocked IPs</div>
           </div>
@@ -127,7 +132,7 @@ export function ThreatDetectionPanel({ threatDetections, anomalies }: ThreatDete
         <div className="space-y-3">
           <h3 className="text-lg font-semibold text-white">Recent Threat Detections</h3>
           <div className="space-y-2 max-h-60 overflow-y-auto">
-            {threatDetections.slice(0, 8).map((threat) => (
+            {safeThreatDetections.slice(0, 8).filter(threat => threat && threat.id).map((threat) => (
               <div key={threat.id} className="bg-gray-900 rounded-lg p-4">
                 <div className="flex items-start justify-between mb-2">
                   <div className="flex items-center space-x-3">
@@ -135,7 +140,7 @@ export function ThreatDetectionPanel({ threatDetections, anomalies }: ThreatDete
                     <div>
                       <div className="text-white text-sm font-medium">{threat.description}</div>
                       <div className="text-gray-400 text-xs mt-1">
-                        {threat.timestamp.toLocaleString()}
+                        {threat.timestamp ? threat.timestamp.toLocaleString() : 'Unknown time'}
                       </div>
                     </div>
                   </div>
@@ -148,7 +153,7 @@ export function ThreatDetectionPanel({ threatDetections, anomalies }: ThreatDete
                 </div>
                 
                 <div className="flex flex-wrap gap-1 mt-2">
-                  {threat.mitreTactics.map((tactic, index) => (
+                  {(threat.mitreTactics || []).map((tactic, index) => (
                     <span
                       key={index}
                       className="text-xs px-2 py-1 bg-red-900/50 text-red-300 rounded"
@@ -158,7 +163,7 @@ export function ThreatDetectionPanel({ threatDetections, anomalies }: ThreatDete
                   ))}
                 </div>
                 
-                {threat.indicators.length > 0 && (
+                {threat.indicators && threat.indicators.length > 0 && (
                   <div className="mt-2 pt-2 border-t border-gray-700">
                     <p className="text-xs text-gray-400 mb-1">Indicators:</p>
                     <div className="flex flex-wrap gap-1">
@@ -178,7 +183,7 @@ export function ThreatDetectionPanel({ threatDetections, anomalies }: ThreatDete
                 {backendConnected && (
                   <div className="mt-2 pt-2 border-t border-gray-700">
                     <button
-                      onClick={() => blockIP(threat.affectedAssets[0] || 'unknown')}
+                      onClick={() => blockIP((threat.affectedAssets && threat.affectedAssets[0]) || 'unknown')}
                       className="text-xs px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded mr-2"
                     >
                       Block IP
@@ -201,7 +206,7 @@ export function ThreatDetectionPanel({ threatDetections, anomalies }: ThreatDete
         </div>
 
         <div className="space-y-3">
-          {anomalies.slice(0, 6).map((anomaly) => (
+          {safeAnomalies.slice(0, 6).filter(anomaly => anomaly && anomaly.id).map((anomaly) => (
             <div key={anomaly.id} className="bg-gray-900 rounded-lg p-4">
               <div className="flex items-start justify-between">
                 <div className="flex-1">
@@ -226,7 +231,7 @@ export function ThreatDetectionPanel({ threatDetections, anomalies }: ThreatDete
                     {anomaly.deviation}% deviation
                   </div>
                   <div className="text-xs text-gray-400">
-                    {anomaly.timestamp.toLocaleTimeString()}
+                    {anomaly.timestamp ? anomaly.timestamp.toLocaleTimeString() : 'Unknown time'}
                   </div>
                 </div>
               </div>
