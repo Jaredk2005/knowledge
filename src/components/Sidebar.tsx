@@ -114,6 +114,13 @@ export function Sidebar({
       icon: UserPlus,
       count: null,
       color: 'text-purple-400'
+    },
+    {
+      id: 'ml-training',
+      label: 'ML Model Training',
+      icon: Brain,
+      count: null,
+      color: 'text-purple-500'
     }
   ];
 

@@ -10,6 +10,7 @@ import { ThreatDetectionPanel } from './ThreatDetectionPanel';
 import { SystemAlertPanel } from './SystemAlertPanel';
 import { UserManagement } from './UserManagement';
 import { CriticalIncidentsPanel } from './CriticalIncidentsPanel';
+import { MLModelTraining } from './MLModelTraining';
 import { useIncidentData } from '../hooks/useIncidentData';
 import { User } from '../types/user';
 
@@ -334,6 +335,8 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
         return user ? <UserManagement currentUser={user} /> : null;
       case 'critical-incidents':
         return <CriticalIncidentsPanel />;
+      case 'ml-training':
+        return <MLModelTraining />;
       default:
         return (
           <>
