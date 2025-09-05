@@ -130,12 +130,30 @@ export function MLModelTraining() {
     addToLog('🚀 Starting CSV-based model training...');
 
     try {
+      if (!csvData.file) {
+        addToLog('❌ No CSV file selected');
+        setIsTraining(false);
+        return;
+      }
+      
       // Parse full CSV file
       const reader = new FileReader();
       reader.onload = async (e) => {
         try {
           const text = e.target?.result as string;
+          if (!text) {
+            addToLog('❌ Failed to read CSV file');
+            setIsTraining(false);
+            return;
+          }
+          
           const lines = text.split('\n').filter(line => line.trim());
+          if (lines.length < 2) {
+            addToLog('❌ CSV file must have at least a header and one data row');
+            setIsTraining(false);
+            return;
+          }
+          
           const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
           
           const trainingData = lines.slice(1).map(line => {
@@ -145,7 +163,9 @@ export function MLModelTraining() {
               row[header] = values[index] || '';
             });
             return row;
-          });
+          }).filter(row => Object.keys(row).length > 0);
+          
+          addToLog(`📊 Parsed ${trainingData.length} training samples from CSV`);
 
           // Prepare training request
           const csvTrainingData = {
@@ -155,6 +175,7 @@ export function MLModelTraining() {
             use_csv: true
           };
 
+          addToLog('📤 Sending training data to ML API...');
           const response = await fetch(`${mlApiUrl}/model/train-csv`, {
             method: 'POST',
             headers: {
@@ -166,23 +187,31 @@ export function MLModelTraining() {
           if (response.ok) {
             const result = await response.json();
             addToLog(`✅ ${result.message}`);
+            addToLog(`📈 Training started with ${result.sample_count} samples`);
             simulateTrainingProgress();
             pollTrainingStatus();
           } else {
-            const error = await response.text();
+            const errorText = await response.text();
+            let errorMessage;
+            try {
+              const errorJson = JSON.parse(errorText);
+              errorMessage = errorJson.detail || errorText;
+            } catch {
+              errorMessage = errorText;
+            }
             addToLog(`❌ CSV training failed: ${error}`);
             setIsTraining(false);
           }
         } catch (error) {
+          console.error('CSV processing error:', error);
           addToLog(`❌ CSV processing error: ${error}`);
           setIsTraining(false);
         }
       };
       
-      if (csvData.file) {
-        reader.readAsText(csvData.file);
-      }
+      reader.readAsText(csvData.file);
     } catch (error) {
+      console.error('CSV training error:', error);
       addToLog(`❌ CSV training error: ${error}`);
       setIsTraining(false);
     }
@@ -196,45 +225,57 @@ export function MLModelTraining() {
 
   const checkMLApiConnection = async () => {
     try {
+      addToLog('🔍 Checking ML API connection...');
       const response = await fetch(`${mlApiUrl}/health`);
       if (response.ok) {
+        const healthData = await response.json();
         setIsConnected(true);
-        addToLog('✅ Connected to ML API server');
+        addToLog(`✅ Connected to ML API server (${healthData.status})`);
+        addToLog(`📊 Model loaded: ${healthData.model_loaded ? 'Yes' : 'No'}`);
       } else {
         setIsConnected(false);
-        addToLog('❌ ML API server not responding');
+        addToLog(`❌ ML API server not responding (${response.status})`);
       }
     } catch (error) {
       setIsConnected(false);
-      addToLog('❌ Failed to connect to ML API server');
+      addToLog(`❌ Failed to connect to ML API server: ${error}`);
+      addToLog('💡 Make sure to run: python ml_models/model_api.py');
     }
   };
 
   const loadModelInfo = async () => {
     try {
+      addToLog('📊 Loading model information...');
       const response = await fetch(`${mlApiUrl}/model/info`);
       if (response.ok) {
         const info = await response.json();
         setModelInfo(info);
-        addToLog(`📊 Model loaded: ${info.model_status}`);
+        addToLog(`📊 Model status: ${info.model_status}, Features: ${info.feature_count}`);
+      } else {
+        addToLog(`❌ Failed to load model info: ${response.status}`);
       }
     } catch (error) {
       console.error('Failed to load model info:', error);
-      addToLog('❌ Failed to load model information');
+      addToLog(`❌ Failed to load model information: ${error}`);
     }
   };
 
   const loadModelMetrics = async () => {
     try {
+      addToLog('📈 Loading model metrics...');
       const response = await fetch(`${mlApiUrl}/model/metrics`);
       if (response.ok) {
         const metrics = await response.json();
         setModelMetrics(metrics);
         addToLog(`📈 Model metrics loaded - Accuracy: ${(metrics.accuracy * 100).toFixed(1)}%`);
+      } else if (response.status === 404) {
+        addToLog('ℹ️ No model metrics available - model not trained yet');
+      } else {
+        addToLog(`❌ Failed to load model metrics: ${response.status}`);
       }
     } catch (error) {
       console.error('Failed to load model metrics:', error);
-      // Don't log error if model isn't trained yet
+      addToLog('ℹ️ Model metrics not available - model may not be trained yet');
     }
   };
 
@@ -252,6 +293,7 @@ export function MLModelTraining() {
     setIsTraining(true);
     setTrainingProgress(0);
     addToLog('🚀 Starting model training...');
+    addToLog(`📊 Configuration: Database=${trainingConfig.use_database}, Augment=${trainingConfig.augment_data}, Samples=${trainingConfig.training_samples}`);
 
     try {
       const response = await fetch(`${mlApiUrl}/model/train`, {
@@ -265,6 +307,7 @@ export function MLModelTraining() {
       if (response.ok) {
         const result = await response.json();
         addToLog(`✅ ${result.message}`);
+        addToLog(`🔄 Training initiated in background...`);
         
         // Simulate training progress
         simulateTrainingProgress();
@@ -272,11 +315,19 @@ export function MLModelTraining() {
         // Poll for completion
         pollTrainingStatus();
       } else {
-        const error = await response.text();
+        const errorText = await response.text();
+        let errorMessage;
+        try {
+          const errorJson = JSON.parse(errorText);
+          errorMessage = errorJson.detail || errorText;
+        } catch {
+          errorMessage = errorText;
+        }
         addToLog(`❌ Training failed: ${error}`);
         setIsTraining(false);
       }
     } catch (error) {
+      console.error('Training error:', error);
       addToLog(`❌ Training error: ${error}`);
       setIsTraining(false);
     }

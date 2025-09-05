@@ -19,6 +19,10 @@ from concurrent.futures import ThreadPoolExecutor
 from threat_detection_model import ThreatDetectionModel, ThreatFeatures
 
 # Database integration
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -187,6 +191,58 @@ class ModelTrainer:
     async def train_comprehensive_model(self, use_database: bool = True, augment_data: bool = True):
         """Train comprehensive threat detection model"""
         self.logger.info("Starting comprehensive model training...")
+        
+        try:
+            training_events = []
+            labels = []
+            
+            # Collect data from database if available
+            if use_database and SUPABASE_AVAILABLE:
+                self.logger.info("Collecting training data from database...")
+                db_events, db_labels = await self.collect_training_data_from_database()
+                training_events.extend(db_events)
+                labels.extend(db_labels)
+                self.logger.info(f"Collected {len(db_events)} samples from database")
+            
+            # If we don't have enough real data, supplement with synthetic data
+            if len(training_events) < 1000:
+                self.logger.info("Insufficient real data, generating synthetic training data...")
+                synthetic_X, synthetic_y = self.model.generate_synthetic_training_data(5000)
+                
+                # Convert synthetic data back to event format for consistency
+                for i in range(len(synthetic_X)):
+                    synthetic_event = {
+                        'packet_size': synthetic_X[i][0],
+                        'connection_duration': synthetic_X[i][1],
+                        'bytes_transferred': synthetic_X[i][2],
+                        'packets_per_second': synthetic_X[i][3],
+                        'unique_ports': int(synthetic_X[i][4]),
+                        'source_ip': f"192.168.{np.random.randint(1, 255)}.{np.random.randint(1, 255)}",
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    training_events.append(synthetic_event)
+                    labels.append(synthetic_y[i])
+                
+                self.logger.info(f"Generated {len(synthetic_X)} synthetic samples")
+            
+            # Augment data if requested
+            if augment_data:
+                training_events, labels = self.augment_training_data(training_events, labels)
+                self.logger.info(f"Data augmentation completed: {len(training_events)} total samples")
+            
+            # Train the model
+            self.logger.info("Starting model training...")
+            metrics = self.model.train_model(training_events, labels)
+            
+            # Save training data for future reference
+            self.save_training_data(training_events, labels)
+            
+            self.logger.info("Model training completed successfully!")
+            return metrics
+            
+        except Exception as e:
+            self.logger.error(f"Training failed: {e}")
+            raise e
         
         training_events = []
         labels = []
@@ -447,6 +503,68 @@ class ModelTrainer:
             'isolation_forest.pkl',
             'feature_selector.pkl',
             'feature_scaler.pkl',
+
+    def train_with_csv_data(self, csv_data: List[Dict], label_column: str, feature_columns: List[str]):
+        """Train model with CSV data"""
+        try:
+            self.logger.info(f"Processing {len(csv_data)} CSV samples for training...")
+            
+            # Convert CSV data to training format
+            training_events = []
+            labels = []
+            
+            for row in csv_data:
+                # Extract label
+                label = row.get(label_column, 'benign')
+                labels.append(label)
+                
+                # Create event data from CSV row
+                event_data = {
+                    'source_ip': row.get('source_ip', '192.168.1.1'),
+                    'destination_ip': row.get('destination_ip', '10.0.0.1'),
+                    'packet_size': self.safe_float(row.get('packet_size', 0)),
+                    'protocol': row.get('protocol', 'TCP'),
+                    'bytes_transferred': self.safe_float(row.get('bytes_transferred', 0)),
+                    'timestamp': row.get('timestamp', datetime.now().isoformat()),
+                    'payload': row.get('payload', '').encode() if row.get('payload') else b'',
+                    'source_port': self.safe_int(row.get('source_port', 0)),
+                    'destination_port': self.safe_int(row.get('destination_port', 0)),
+                    'connection_duration': self.safe_float(row.get('connection_duration', 0)),
+                    'packets_per_second': self.safe_float(row.get('packets_per_second', 1)),
+                    'reputation_score': self.safe_float(row.get('reputation_score', 0.5))
+                }
+                
+                # Add any additional features from CSV
+                for col in feature_columns:
+                    if col not in event_data and col in row:
+                        event_data[col] = self.safe_float(row[col])
+                
+                training_events.append(event_data)
+            
+            # Train the model
+            self.logger.info(f"Training model with {len(training_events)} CSV samples")
+            metrics = self.model.train_model(training_events, labels)
+            self.logger.info(f"CSV training completed - Accuracy: {metrics.accuracy:.3f}")
+            
+            return metrics
+            
+        except Exception as e:
+            self.logger.error(f"CSV training error: {e}")
+            raise e
+    
+    def safe_float(self, value) -> float:
+        """Safely convert value to float"""
+        try:
+            return float(value) if value is not None else 0.0
+        except (ValueError, TypeError):
+            return 0.0
+    
+    def safe_int(self, value) -> int:
+        """Safely convert value to int"""
+        try:
+            return int(float(value)) if value is not None else 0
+        except (ValueError, TypeError):
+            return 0
             'label_encoder.pkl',
             'model_metadata.json'
         ]

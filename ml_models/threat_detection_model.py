@@ -597,6 +597,125 @@ class ThreatDetectionModel:
         start_time = datetime.now()
         self.logger.info("Starting model training...")
         
+        try:
+            # Use synthetic data if no training data provided
+            if training_data is None or labels is None:
+                self.logger.info("No training data provided, generating synthetic data...")
+                X, y = self.generate_synthetic_training_data()
+            else:
+                self.logger.info(f"Training with {len(training_data)} provided samples...")
+                # Extract features from provided training data
+                feature_vectors = []
+                for event in training_data:
+                    features = self.extract_features(event)
+                    feature_vectors.append(features.to_vector())
+                
+                X = np.array(feature_vectors)
+                y = np.array(labels)
+            
+            self.logger.info(f"Feature extraction completed: {X.shape}")
+            
+            # Encode labels
+            y_encoded = self.label_encoder.fit_transform(y)
+            self.logger.info(f"Label encoding completed: {len(np.unique(y_encoded))} classes")
+            
+            # Split data
+            X_train, X_test, y_train, y_test = train_test_split(
+                X, y_encoded, test_size=0.2, random_state=42, stratify=y_encoded
+            )
+            self.logger.info(f"Data split: {len(X_train)} train, {len(X_test)} test samples")
+            
+            # Feature selection
+            self.logger.info("Performing feature selection...")
+            self.feature_selector = SelectKBest(score_func=f_classif, k=min(20, X.shape[1]))
+            X_train_selected = self.feature_selector.fit_transform(X_train, y_train)
+            X_test_selected = self.feature_selector.transform(X_test)
+            
+            # Scale features
+            self.logger.info("Scaling features...")
+            X_train_scaled = self.scaler.fit_transform(X_train_selected)
+            X_test_scaled = self.scaler.transform(X_test_selected)
+            
+            # Train Random Forest with basic parameters first
+            self.logger.info("Training Random Forest classifier...")
+            self.primary_classifier = RandomForestClassifier(
+                n_estimators=100,
+                max_depth=20,
+                min_samples_split=5,
+                min_samples_leaf=2,
+                random_state=42,
+                n_jobs=-1,
+                class_weight='balanced'
+            )
+            self.primary_classifier.fit(X_train_scaled, y_train)
+            
+            # Train anomaly detector
+            self.logger.info("Training anomaly detector...")
+            self.anomaly_detector = IsolationForest(**self.model_config['isolation_forest'])
+            self.anomaly_detector.fit(X_train_scaled)
+            
+            # Evaluate model
+            self.logger.info("Evaluating model performance...")
+            y_pred = self.primary_classifier.predict(X_test_scaled)
+            y_pred_proba = self.primary_classifier.predict_proba(X_test_scaled)
+            
+            # Calculate metrics
+            from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
+            
+            accuracy = accuracy_score(y_test, y_pred)
+            precision = precision_score(y_test, y_pred, average='weighted')
+            recall = recall_score(y_test, y_pred, average='weighted')
+            f1 = f1_score(y_test, y_pred, average='weighted')
+            
+            # AUC score (for binary classification, use macro average for multiclass)
+            try:
+                auc = roc_auc_score(y_test, y_pred_proba, multi_class='ovr', average='weighted')
+            except:
+                auc = 0.0
+            
+            # Feature importance
+            feature_importance = {}
+            selected_features = self.feature_selector.get_support()
+            selected_feature_names = [name for i, name in enumerate(self.feature_names) if selected_features[i]]
+            
+            for i, importance in enumerate(self.primary_classifier.feature_importances_):
+                if i < len(selected_feature_names):
+                    feature_importance[selected_feature_names[i]] = float(importance)
+            
+            # Store metrics
+            training_time = (datetime.now() - start_time).total_seconds()
+            self.metrics = ModelMetrics(
+                accuracy=accuracy,
+                precision=precision,
+                recall=recall,
+                f1_score=f1,
+                auc_score=auc,
+                training_samples=len(X_train),
+                test_samples=len(X_test),
+                feature_importance=feature_importance,
+                confusion_matrix=confusion_matrix(y_test, y_pred).tolist(),
+                training_time=training_time,
+                last_trained=datetime.now().isoformat()
+            )
+            
+            # Log results
+            self.logger.info(f"Model training completed in {training_time:.2f} seconds")
+            self.logger.info(f"Accuracy: {accuracy:.3f}")
+            self.logger.info(f"F1 Score: {f1:.3f}")
+            self.logger.info(f"AUC Score: {auc:.3f}")
+            
+            # Save models
+            self.save_models()
+            
+            # Generate training report
+            self.generate_training_report()
+            
+            return self.metrics
+            
+        except Exception as e:
+            self.logger.error(f"Model training failed: {e}")
+            raise e
+        
         # Use synthetic data if no training data provided
         if training_data is None or labels is None:
             X, y = self.generate_synthetic_training_data()

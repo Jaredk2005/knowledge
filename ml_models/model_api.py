@@ -21,6 +21,13 @@ import io
 from threat_detection_model import ThreatDetectionModel, threat_model
 from model_trainer import ModelTrainer
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 # Pydantic models for API
 class ThreatPredictionRequest(BaseModel):
     source_ip: str
@@ -68,14 +75,8 @@ async def lifespan(app: FastAPI):
     # Startup
     logging.info("ML Model API starting up...")
     
-    # Load existing model if available
-    if not threat_model.primary_classifier:
-        logging.info("No trained model found, training new model...")
-        try:
-            await model_trainer.train_comprehensive_model()
-            logging.info("Model training completed during startup")
-        except Exception as e:
-            logging.error(f"Failed to train model during startup: {e}")
+    # Initialize model without auto-training
+    logging.info("ML Model API ready for training requests")
     
     yield
     
@@ -98,13 +99,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-# Logging setup
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
 
 @app.post("/api/ml/predict", response_model=ThreatPredictionResponse)
 async def predict_threat(request: ThreatPredictionRequest):
