@@ -14,6 +14,8 @@ import logging
 from datetime import datetime
 import uvicorn
 from contextlib import asynccontextmanager
+import pandas as pd
+import io
 
 # Import our models
 from threat_detection_model import ThreatDetectionModel, threat_model
@@ -44,6 +46,11 @@ class ModelTrainingRequest(BaseModel):
     augment_data: bool = True
     training_samples: Optional[int] = None
 
+class CSVTrainingRequest(BaseModel):
+    training_data: List[Dict[str, Any]]
+    label_column: str
+    feature_columns: List[str]
+    use_csv: bool = True
 class ModelInfo(BaseModel):
     model_status: str
     feature_count: int
@@ -220,6 +227,90 @@ async def train_model(request: ModelTrainingRequest, background_tasks: Backgroun
         logger.error(f"Training initiation error: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to start training: {str(e)}")
 
+@app.post("/api/ml/model/train-csv")
+async def train_model_with_csv(request: CSVTrainingRequest, background_tasks: BackgroundTasks):
+    """Train model with uploaded CSV data"""
+    try:
+        # Validate CSV data
+        if not request.training_data:
+            raise HTTPException(status_code=400, detail="No training data provided")
+        
+        if not request.label_column:
+            raise HTTPException(status_code=400, detail="Label column not specified")
+        
+        if not request.feature_columns:
+            raise HTTPException(status_code=400, detail="No feature columns specified")
+        
+        # Validate that columns exist in data
+        sample_row = request.training_data[0]
+        if request.label_column not in sample_row:
+            raise HTTPException(status_code=400, detail=f"Label column '{request.label_column}' not found in data")
+        
+        missing_features = [col for col in request.feature_columns if col not in sample_row]
+        if missing_features:
+            raise HTTPException(status_code=400, detail=f"Feature columns not found: {missing_features}")
+        
+        # Process CSV data for training
+        def train_with_csv_data():
+            try:
+                # Convert to training format
+                training_events = []
+                labels = []
+                
+                for row in request.training_data:
+                    # Extract label
+                    label = row[request.label_column]
+                    labels.append(label)
+                    
+                    # Create event data from features
+                    event_data = {
+                        'source_ip': row.get('source_ip', '192.168.1.1'),
+                        'destination_ip': row.get('destination_ip', '10.0.0.1'),
+                        'packet_size': float(row.get('packet_size', 0)),
+                        'protocol': row.get('protocol', 'TCP'),
+                        'bytes_transferred': float(row.get('bytes_transferred', 0)),
+                        'timestamp': row.get('timestamp', datetime.now().isoformat()),
+                        'payload': row.get('payload', '').encode() if row.get('payload') else b'',
+                        'source_port': int(row.get('source_port', 0)) if row.get('source_port') else 0,
+                        'destination_port': int(row.get('destination_port', 0)) if row.get('destination_port') else 0,
+                        'connection_duration': float(row.get('connection_duration', 0)),
+                        'packets_per_second': float(row.get('packets_per_second', 1)),
+                        'reputation_score': float(row.get('reputation_score', 0.5))
+                    }
+                    
+                    # Add any additional features from CSV
+                    for col in request.feature_columns:
+                        if col not in event_data and col in row:
+                            try:
+                                # Try to convert to float, fallback to string
+                                event_data[col] = float(row[col])
+                            except (ValueError, TypeError):
+                                event_data[col] = str(row[col])
+                    
+                    training_events.append(event_data)
+                
+                # Train the model
+                logger.info(f"Training model with {len(training_events)} CSV samples")
+                metrics = threat_model.train_model(training_events, labels)
+                logger.info(f"CSV training completed - Accuracy: {metrics.accuracy:.3f}")
+                
+            except Exception as e:
+                logger.error(f"CSV training error: {e}")
+        
+        # Start training in background
+        background_tasks.add_task(train_with_csv_data)
+        
+        return {
+            'status': 'csv_training_started',
+            'message': f'Model training started with {len(request.training_data)} CSV samples',
+            'label_column': request.label_column,
+            'feature_columns': request.feature_columns,
+            'sample_count': len(request.training_data)
+        }
+        
+    except Exception as e:
+        logger.error(f"CSV training initiation error: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to start CSV training: {str(e)}")
 @app.get("/api/ml/model/metrics")
 async def get_model_metrics():
     """Get detailed model performance metrics"""

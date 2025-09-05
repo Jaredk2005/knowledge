@@ -117,6 +117,26 @@ class MLModelService {
     return await response.json();
   }
 
+  async trainModelWithCSV(config: {
+    training_data: any[];
+    label_column: string;
+    feature_columns: string[];
+    use_csv: boolean;
+  }): Promise<any> {
+    const response = await fetch(`${this.baseUrl}/model/train-csv`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(config),
+    });
+
+    if (!response.ok) {
+      throw new Error(`CSV training failed: ${response.statusText}`);
+    }
+
+    return await response.json();
+  }
   async getModelReport(): Promise<{ report: string }> {
     const response = await fetch(`${this.baseUrl}/model/report`);
     

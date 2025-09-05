@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Brain, Play, Square, BarChart3, Settings, Download, Upload, RefreshCw, CheckCircle, AlertTriangle, TrendingUp } from 'lucide-react';
+import { Brain, Play, Square, BarChart3, Settings, Download, Upload, RefreshCw, CheckCircle, AlertTriangle, TrendingUp, FileText, X } from 'lucide-react';
 
 interface ModelMetrics {
   accuracy: number;
@@ -27,8 +27,16 @@ interface TrainingConfig {
   use_database: boolean;
   augment_data: boolean;
   training_samples?: number;
+  use_csv_file: boolean;
 }
 
+interface CSVUploadData {
+  file: File | null;
+  columns: string[];
+  preview: any[];
+  labelColumn: string;
+  featureColumns: string[];
+}
 export function MLModelTraining() {
   const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
   const [modelMetrics, setModelMetrics] = useState<ModelMetrics | null>(null);
@@ -39,12 +47,146 @@ export function MLModelTraining() {
   const [trainingConfig, setTrainingConfig] = useState<TrainingConfig>({
     use_database: true,
     augment_data: true,
-    training_samples: 5000
+    training_samples: 5000,
+    use_csv_file: false
   });
+  const [csvData, setCsvData] = useState<CSVUploadData>({
+    file: null,
+    columns: [],
+    preview: [],
+    labelColumn: '',
+    featureColumns: []
+  });
+  const [showCsvConfig, setShowCsvConfig] = useState(false);
   const [benchmarkResults, setBenchmarkResults] = useState<any>(null);
   const [modelReport, setModelReport] = useState<string>('');
 
   const mlApiUrl = 'http://localhost:8003/api/ml';
+
+  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.csv')) {
+      addToLog('❌ Please upload a CSV file');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        const lines = text.split('\n').filter(line => line.trim());
+        
+        if (lines.length < 2) {
+          addToLog('❌ CSV file must have at least a header and one data row');
+          return;
+        }
+
+        const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+        const preview = lines.slice(1, 6).map(line => {
+          const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
+          const row: any = {};
+          headers.forEach((header, index) => {
+            row[header] = values[index] || '';
+          });
+          return row;
+        });
+
+        setCsvData({
+          file,
+          columns: headers,
+          preview,
+          labelColumn: '',
+          featureColumns: []
+        });
+
+        setShowCsvConfig(true);
+        addToLog(`✅ CSV file loaded: ${lines.length - 1} rows, ${headers.length} columns`);
+      } catch (error) {
+        addToLog(`❌ Error parsing CSV file: ${error}`);
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const validateCsvConfig = () => {
+    if (!csvData.labelColumn) {
+      addToLog('❌ Please select a label column');
+      return false;
+    }
+    if (csvData.featureColumns.length === 0) {
+      addToLog('❌ Please select at least one feature column');
+      return false;
+    }
+    return true;
+  };
+
+  const startCsvTraining = async () => {
+    if (!validateCsvConfig()) return;
+
+    setIsTraining(true);
+    setTrainingProgress(0);
+    addToLog('🚀 Starting CSV-based model training...');
+
+    try {
+      // Parse full CSV file
+      const reader = new FileReader();
+      reader.onload = async (e) => {
+        try {
+          const text = e.target?.result as string;
+          const lines = text.split('\n').filter(line => line.trim());
+          const headers = lines[0].split(',').map(h => h.trim().replace(/"/g, ''));
+          
+          const trainingData = lines.slice(1).map(line => {
+            const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
+            const row: any = {};
+            headers.forEach((header, index) => {
+              row[header] = values[index] || '';
+            });
+            return row;
+          });
+
+          // Prepare training request
+          const csvTrainingData = {
+            training_data: trainingData,
+            label_column: csvData.labelColumn,
+            feature_columns: csvData.featureColumns,
+            use_csv: true
+          };
+
+          const response = await fetch(`${mlApiUrl}/model/train-csv`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(csvTrainingData),
+          });
+
+          if (response.ok) {
+            const result = await response.json();
+            addToLog(`✅ ${result.message}`);
+            simulateTrainingProgress();
+            pollTrainingStatus();
+          } else {
+            const error = await response.text();
+            addToLog(`❌ CSV training failed: ${error}`);
+            setIsTraining(false);
+          }
+        } catch (error) {
+          addToLog(`❌ CSV processing error: ${error}`);
+          setIsTraining(false);
+        }
+      };
+      
+      if (csvData.file) {
+        reader.readAsText(csvData.file);
+      }
+    } catch (error) {
+      addToLog(`❌ CSV training error: ${error}`);
+      setIsTraining(false);
+    }
+  };
 
   useEffect(() => {
     checkMLApiConnection();
@@ -322,6 +464,7 @@ export function MLModelTraining() {
                   checked={trainingConfig.use_database}
                   onChange={(e) => setTrainingConfig(prev => ({ ...prev, use_database: e.target.checked }))}
                   className="rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500"
+                  disabled={trainingConfig.use_csv_file}
                 />
                 <span className="text-sm text-gray-300">Use database data</span>
               </label>
@@ -333,6 +476,31 @@ export function MLModelTraining() {
                   className="rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500"
                 />
                 <span className="text-sm text-gray-300">Augment training data</span>
+              </label>
+              <label className="flex items-center space-x-2">
+                <input
+                  type="checkbox"
+                  checked={trainingConfig.use_csv_file}
+                  onChange={(e) => {
+                    setTrainingConfig(prev => ({ 
+                      ...prev, 
+                      use_csv_file: e.target.checked,
+                      use_database: e.target.checked ? false : prev.use_database
+                    }));
+                    if (!e.target.checked) {
+                      setCsvData({
+                        file: null,
+                        columns: [],
+                        preview: [],
+                        labelColumn: '',
+                        featureColumns: []
+                      });
+                      setShowCsvConfig(false);
+                    }
+                  }}
+                  className="rounded bg-gray-700 border-gray-600 text-blue-600 focus:ring-blue-500"
+                />
+                <span className="text-sm text-gray-300">Use CSV file</span>
               </label>
             </div>
           </div>
@@ -347,13 +515,14 @@ export function MLModelTraining() {
               min="1000"
               max="50000"
               step="1000"
+              disabled={trainingConfig.use_csv_file}
             />
             <p className="text-xs text-gray-400 mt-1">Minimum 1,000 samples recommended</p>
           </div>
           
           <div className="flex items-end">
             <button
-              onClick={startTraining}
+              onClick={trainingConfig.use_csv_file ? startCsvTraining : startTraining}
               disabled={!isConnected || isTraining}
               className="w-full px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-800 disabled:cursor-not-allowed text-white rounded-lg font-medium transition-colors flex items-center justify-center space-x-2"
             >
@@ -372,6 +541,149 @@ export function MLModelTraining() {
           </div>
         </div>
 
+        {/* CSV File Upload */}
+        {trainingConfig.use_csv_file && (
+          <div className="mt-6 p-4 bg-blue-900/20 border border-blue-700/50 rounded-lg">
+            <h4 className="text-blue-300 font-medium mb-3">CSV File Upload</h4>
+            
+            {!csvData.file ? (
+              <div className="border-2 border-dashed border-gray-600 rounded-lg p-6 text-center">
+                <Upload className="h-8 w-8 text-gray-400 mx-auto mb-2" />
+                <p className="text-gray-300 mb-2">Upload your threat detection dataset</p>
+                <p className="text-gray-400 text-sm mb-4">CSV format with threat labels and network features</p>
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={handleFileUpload}
+                  className="hidden"
+                  id="csv-upload"
+                />
+                <label
+                  htmlFor="csv-upload"
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer transition-colors inline-flex items-center space-x-2"
+                >
+                  <Upload className="h-4 w-4" />
+                  <span>Choose CSV File</span>
+                </label>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between p-3 bg-gray-800 rounded-lg">
+                  <div className="flex items-center space-x-2">
+                    <FileText className="h-5 w-5 text-blue-400" />
+                    <span className="text-white">{csvData.file.name}</span>
+                    <span className="text-gray-400 text-sm">({csvData.columns.length} columns)</span>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setCsvData({
+                        file: null,
+                        columns: [],
+                        preview: [],
+                        labelColumn: '',
+                        featureColumns: []
+                      });
+                      setShowCsvConfig(false);
+                    }}
+                    className="text-red-400 hover:text-red-300"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+
+                {/* CSV Configuration */}
+                {showCsvConfig && (
+                  <div className="bg-gray-800 rounded-lg p-4 space-y-4">
+                    <h5 className="text-white font-medium">Configure CSV Columns</h5>
+                    
+                    {/* Label Column Selection */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Label Column (threat type)
+                      </label>
+                      <select
+                        value={csvData.labelColumn}
+                        onChange={(e) => setCsvData(prev => ({ ...prev, labelColumn: e.target.value }))}
+                        className="w-full px-3 py-2 bg-gray-700 border border-gray-600 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                      >
+                        <option value="">Select label column...</option>
+                        {csvData.columns.map(col => (
+                          <option key={col} value={col}>{col}</option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {/* Feature Columns Selection */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Feature Columns (select multiple)
+                      </label>
+                      <div className="max-h-32 overflow-y-auto bg-gray-700 rounded-lg p-2 space-y-1">
+                        {csvData.columns.filter(col => col !== csvData.labelColumn).map(col => (
+                          <label key={col} className="flex items-center space-x-2">
+                            <input
+                              type="checkbox"
+                              checked={csvData.featureColumns.includes(col)}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setCsvData(prev => ({
+                                    ...prev,
+                                    featureColumns: [...prev.featureColumns, col]
+                                  }));
+                                } else {
+                                  setCsvData(prev => ({
+                                    ...prev,
+                                    featureColumns: prev.featureColumns.filter(f => f !== col)
+                                  }));
+                                }
+                              }}
+                              className="rounded bg-gray-600 border-gray-500 text-blue-600 focus:ring-blue-500"
+                            />
+                            <span className="text-sm text-gray-300">{col}</span>
+                          </label>
+                        ))}
+                      </div>
+                      <p className="text-xs text-gray-400 mt-1">
+                        Selected: {csvData.featureColumns.length} features
+                      </p>
+                    </div>
+
+                    {/* Data Preview */}
+                    <div>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">Data Preview</label>
+                      <div className="bg-gray-900 rounded-lg p-3 max-h-40 overflow-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="border-b border-gray-700">
+                              {csvData.columns.slice(0, 6).map(col => (
+                                <th key={col} className="text-left p-1 text-gray-400">
+                                  {col}
+                                  {col === csvData.labelColumn && <span className="text-blue-400"> (Label)</span>}
+                                  {csvData.featureColumns.includes(col) && <span className="text-green-400"> (Feature)</span>}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {csvData.preview.map((row, index) => (
+                              <tr key={index} className="border-b border-gray-800">
+                                {csvData.columns.slice(0, 6).map(col => (
+                                  <td key={col} className="p-1 text-gray-300 truncate max-w-20">
+                                    {row[col]}
+                                  </td>
+                                ))}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
         {/* Training Progress */}
         {isTraining && (
           <div className="mt-6 p-4 bg-purple-900/20 border border-purple-700/50 rounded-lg">
@@ -579,15 +891,29 @@ export function MLModelTraining() {
           </div>
           
           <div className="bg-gray-900 rounded-lg p-4">
-            <h4 className="text-white font-medium mb-2">3. Train Model</h4>
-            <p className="text-gray-300 text-sm">Use the training configuration above and click "Start Training"</p>
-            <p className="text-gray-400 text-xs mt-1">Training typically takes 30-120 seconds depending on data size</p>
+            <h4 className="text-white font-medium mb-2">3. Prepare Training Data</h4>
+            <p className="text-gray-300 text-sm">Either use database data or upload a CSV file with threat labels</p>
+            <p className="text-gray-400 text-xs mt-1">CSV should have columns like: source_ip, packet_size, threat_type, etc.</p>
           </div>
           
           <div className="bg-gray-900 rounded-lg p-4">
-            <h4 className="text-white font-medium mb-2">4. Test & Deploy</h4>
+            <h4 className="text-white font-medium mb-2">4. Train & Deploy</h4>
             <p className="text-gray-300 text-sm">Run test predictions and benchmarks to validate performance</p>
             <p className="text-gray-400 text-xs mt-1">Model will automatically be used for real-time threat detection</p>
+          </div>
+        </div>
+        
+        {/* CSV Format Guide */}
+        <div className="mt-6 p-4 bg-green-900/20 border border-green-700/50 rounded-lg">
+          <h4 className="text-green-300 font-medium mb-2">CSV Format Requirements</h4>
+          <div className="text-sm text-gray-300 space-y-1">
+            <p><strong>Required columns:</strong> At least one label column with threat types</p>
+            <p><strong>Threat types:</strong> benign, malware, ddos, brute_force, port_scan, etc.</p>
+            <p><strong>Feature columns:</strong> source_ip, packet_size, protocol, bytes_transferred, etc.</p>
+            <p><strong>Example:</strong> source_ip,packet_size,protocol,threat_type</p>
+            <p className="text-xs text-gray-400 mt-2">
+              The system will automatically extract additional features from basic network data
+            </p>
           </div>
         </div>
       </div>
