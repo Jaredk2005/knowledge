@@ -21,6 +21,8 @@ import hashlib
 import re
 import ipaddress
 import os
+from pathlib import Path
+import os
 import matplotlib.pyplot as plt
 import seaborn as sns
 from pathlib import Path
@@ -117,6 +119,17 @@ class ThreatDetectionModel:
         self.model_dir = Path(model_dir)
         self.model_dir.mkdir(parents=True, exist_ok=True)
         
+        # Model persistence files
+        self.model_files = {
+            'primary_classifier': self.model_dir / 'random_forest_classifier.pkl',
+            'anomaly_detector': self.model_dir / 'isolation_forest.pkl',
+            'feature_selector': self.model_dir / 'feature_selector.pkl',
+            'scaler': self.model_dir / 'feature_scaler.pkl',
+            'label_encoder': self.model_dir / 'label_encoder.pkl',
+            'metadata': self.model_dir / 'model_metadata.json',
+            'training_history': self.model_dir / 'training_history.json'
+        }
+        
         # Models
         self.primary_classifier = None
         self.anomaly_detector = None
@@ -165,10 +178,14 @@ class ThreatDetectionModel:
         # Performance tracking
         self.metrics = None
         self.training_history = []
+        self.training_history = []
         
         # Setup logging
         logging.basicConfig(level=logging.INFO)
         self.logger = logging.getLogger(__name__)
+        
+        # Try to load existing model
+        self.load_model()
         
         # Try to load existing models
         self.load_models()
