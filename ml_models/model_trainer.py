@@ -544,6 +544,17 @@ class ModelTrainer:
             # Train the model
             self.logger.info(f"Training model with {len(training_events)} CSV samples")
             metrics = self.model.train_model(training_events, labels)
+            
+            # Add training record for CSV training
+            self.model.add_training_record({
+                'training_samples': len(training_events),
+                'data_source': 'csv_upload',
+                'accuracy': metrics.accuracy,
+                'f1_score': metrics.f1_score,
+                'training_time': metrics.training_time,
+                'augmented': False
+            })
+            
             self.logger.info(f"CSV training completed - Accuracy: {metrics.accuracy:.3f}")
             
             return metrics

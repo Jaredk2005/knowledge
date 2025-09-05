@@ -1207,12 +1207,20 @@ class ThreatDetectionModel:
     
     def get_model_info(self) -> Dict[str, Any]:
         """Get comprehensive model information"""
+        # Check if model files exist
+        model_exists = any(f.exists() for f in [
+            self.model_files['primary_classifier'],
+            self.model_files['anomaly_detector']
+        ])
+        
         info = {
-            'model_status': 'trained' if self.primary_classifier else 'not_trained',
+            'model_status': 'trained' if (self.primary_classifier and model_exists) else 'not_trained',
             'feature_count': len(self.feature_names),
             'threat_categories': self.threat_categories,
             'model_config': self.model_config
         }
+            'training_sessions': len(self.training_history),
+            'model_files_exist': model_exists,
         
         if self.metrics:
             info['performance'] = asdict(self.metrics)
@@ -1223,7 +1231,8 @@ class ThreatDetectionModel:
                 'max_depth': getattr(self.primary_classifier, 'max_depth', None),
                 'n_features_in': getattr(self.primary_classifier, 'n_features_in_', None),
                 'n_classes': getattr(self.primary_classifier, 'n_classes_', None)
-            }
+            },
+            'model_directory': str(self.model_dir)
         
         return info
 

@@ -192,7 +192,10 @@ async def get_model_info():
             threat_categories=info['threat_categories'],
             last_trained=info.get('performance', {}).get('last_trained'),
             accuracy=info.get('performance', {}).get('accuracy'),
-            f1_score=info.get('performance', {}).get('f1_score')
+            f1_score=info.get('performance', {}).get('f1_score'),
+            training_sessions=info.get('training_sessions', 0),
+            model_files_exist=info.get('model_files_exist', False),
+            model_directory=info.get('model_directory', '')
         )
         
     except Exception as e:

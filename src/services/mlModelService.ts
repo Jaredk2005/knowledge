@@ -26,6 +26,10 @@ export interface ModelInfo {
   last_trained?: string;
   accuracy?: number;
   f1_score?: number;
+  training_sessions?: number;
+  model_files_exist?: boolean;
+  model_directory?: string;
+  training_samples?: number;
 }
 
 export interface ModelMetrics {

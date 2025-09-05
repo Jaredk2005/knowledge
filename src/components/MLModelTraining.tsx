@@ -924,6 +924,32 @@ export function MLModelTraining() {
           </div>
         </div>
       )}
+      
+      {/* Training History */}
+      {modelInfo && modelInfo.training_sessions > 0 && (
+        <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
+          <h3 className="text-lg font-semibold text-white mb-4">Training History</h3>
+          <div className="bg-gray-900 rounded-lg p-4">
+            <div className="space-y-2 text-sm">
+              <div className="grid grid-cols-4 gap-4 text-gray-400 font-medium border-b border-gray-700 pb-2">
+                <span>Date</span>
+                <span>Data Source</span>
+                <span>Samples</span>
+                <span>Accuracy</span>
+              </div>
+              <div className="max-h-32 overflow-y-auto space-y-1">
+                {/* Training history will be populated from API */}
+                <div className="grid grid-cols-4 gap-4 text-gray-300">
+                  <span>{modelInfo.last_trained ? new Date(modelInfo.last_trained).toLocaleDateString() : 'N/A'}</span>
+                  <span>Latest Training</span>
+                  <span>{modelInfo.training_samples?.toLocaleString() || 'N/A'}</span>
+                  <span>{modelInfo.accuracy ? `${(modelInfo.accuracy * 100).toFixed(1)}%` : 'N/A'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Quick Start Guide */}
       <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
