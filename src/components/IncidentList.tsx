@@ -50,13 +50,13 @@ export function IncidentList({ incidents }: IncidentListProps) {
       </div>
 
       <div className="space-y-3">
-        {!incidents || incidents.length === 0 ? (
+        {!incidents || !Array.isArray(incidents) || incidents.length === 0 ? (
           <div className="text-center py-8">
             <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-3" />
             <p className="text-gray-400">No recent incidents</p>
           </div>
         ) : (
-          incidents.filter(incident => incident && incident.id).map((incident) => (
+          incidents.filter(incident => incident && incident.id && incident.type && incident.severity && incident.status).map((incident) => (
             <div key={incident.id} className="bg-gray-900 rounded-lg p-4">
               <div className="flex items-start justify-between mb-3">
                 <div className="flex-1">
@@ -68,13 +68,13 @@ export function IncidentList({ incidents }: IncidentListProps) {
                       {incident.type.replace('_', ' ').toUpperCase()}
                     </span>
                   </div>
-                  <p className="text-white text-sm font-medium">{incident.description}</p>
+                  <p className="text-white text-sm font-medium">{incident.description || 'No description available'}</p>
                   <div className="flex items-center space-x-4 mt-2 text-xs text-gray-400">
-                    <span>Source: {incident.source}</span>
-                    <span>Target: {incident.target}</span>
+                    <span>Source: {incident.source || 'Unknown'}</span>
+                    <span>Target: {incident.target || 'Unknown'}</span>
                     <span className="flex items-center">
                       <Clock className="h-3 w-3 mr-1" />
-                      {incident.timestamp.toLocaleString()}
+                      {incident.timestamp ? incident.timestamp.toLocaleString() : 'Unknown time'}
                     </span>
                   </div>
                 </div>
@@ -93,7 +93,7 @@ export function IncidentList({ incidents }: IncidentListProps) {
                 </div>
               </div>
               
-              {incident.responseActions.length > 0 && (
+              {incident.responseActions && Array.isArray(incident.responseActions) && incident.responseActions.length > 0 && (
                 <div className="mt-3 pt-3 border-t border-gray-700">
                   <p className="text-xs text-gray-400 mb-2">Response Actions:</p>
                   <div className="flex flex-wrap gap-1">
@@ -102,7 +102,7 @@ export function IncidentList({ incidents }: IncidentListProps) {
                         key={index}
                         className="text-xs px-2 py-1 bg-blue-900/50 text-blue-300 rounded"
                       >
-                        {action}
+                        {action || 'Unknown action'}
                       </span>
                     ))}
                   </div>

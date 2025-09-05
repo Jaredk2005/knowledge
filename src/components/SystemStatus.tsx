@@ -40,8 +40,8 @@ export function SystemStatus({ systems }: SystemStatusProps) {
   const onlineCount = systems.filter(s => s.status === 'online').length;
   
   // Safety check for systems array
-  const safeSystems = systems || [];
-  const safeOnlineCount = safeSystems.filter(s => s && s.status === 'online').length;
+  const safeSystems = Array.isArray(systems) ? systems : [];
+  const safeOnlineCount = safeSystems.filter(s => s && s.status && s.status === 'online').length;
 
   return (
     <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
@@ -56,7 +56,7 @@ export function SystemStatus({ systems }: SystemStatusProps) {
       </div>
 
       <div className="space-y-3">
-        {safeSystems.filter(system => system && system.component).map((system, index) => (
+        {safeSystems.filter(system => system && system.component && system.status && system.lastCheck).map((system, index) => (
           <div key={index} className="flex items-center justify-between p-3 bg-gray-900 rounded-lg">
             <div className="flex items-center space-x-3">
               {getStatusIcon(system.status)}
@@ -64,7 +64,7 @@ export function SystemStatus({ systems }: SystemStatusProps) {
                 <div className="text-white text-sm font-medium">{system.component}</div>
                 <div className="flex items-center space-x-2 text-xs text-gray-400">
                   <Clock className="h-3 w-3" />
-                  <span>Last check: {system.lastCheck.toLocaleTimeString()}</span>
+                  <span>Last check: {system.lastCheck ? system.lastCheck.toLocaleTimeString() : 'Unknown'}</span>
                 </div>
               </div>
             </div>
@@ -73,7 +73,7 @@ export function SystemStatus({ systems }: SystemStatusProps) {
                 {system.status.charAt(0).toUpperCase() + system.status.slice(1)}
               </div>
               <div className="text-xs text-gray-400">
-                {system.responseTime}ms
+                {system.responseTime || 0}ms
               </div>
             </div>
           </div>

@@ -10,15 +10,20 @@ import { fetchAlerts as fetchBackendAlerts } from '../services/backendApi'
 // Function to transform database incident to app incident format
 function transformDbIncidentToAppIncident(dbIncident: any): Incident {
   console.log('Transforming incident:', dbIncident)
+  
+  // Safety checks
+  if (!dbIncident || !dbIncident.id) {
+    throw new Error('Invalid incident data: missing id')
+  }
   return {
     id: dbIncident.id,
-    timestamp: new Date(dbIncident.created_at),
-    type: dbIncident.incident_type as any,
-    severity: dbIncident.severity as any,
+    timestamp: new Date(dbIncident.created_at || dbIncident.detected_at || Date.now()),
+    type: (dbIncident.incident_type || 'malware') as any,
+    severity: (dbIncident.severity || 'medium') as any,
     source: dbIncident.source_ip || dbIncident.source_system || 'Unknown',
     target: dbIncident.destination_ip || dbIncident.target_system || 'Unknown',
-    description: dbIncident.description,
-    status: dbIncident.status as any,
+    description: dbIncident.description || 'No description available',
+    status: (dbIncident.status || 'detected') as any,
     responseActions: [], // Will be populated from incident_actions table if needed
     affectedSystems: dbIncident.affected_systems || []
   }
@@ -57,7 +62,15 @@ export function useIncidentData() {
       if (data) {
         const transformedIncidents = data
           .filter(incident => incident && incident.id)
-          .map(transformDbIncidentToAppIncident)
+          .map(incident => {
+            try {
+              return transformDbIncidentToAppIncident(incident)
+            } catch (error) {
+              console.error('Error transforming incident:', error, incident)
+              return null
+            }
+          })
+          .filter(incident => incident !== null) as Incident[]
         console.log(`✅ Transformed ${transformedIncidents.length} incidents for display`)
         setIncidents(transformedIncidents)
       }
@@ -107,18 +120,24 @@ export function useIncidentData() {
 
     // Set up backend service listeners
     const unsubscribeThreat = backendService.onThreatDetected((threat: BackendThreat) => {
+      // Safety check for threat data
+      if (!threat || !threat.id || !threat.timestamp) {
+        console.warn('Invalid threat data received:', threat)
+        return
+      }
+      
       // Convert backend threat to incident
       const incident: Incident = {
         id: threat.id,
         timestamp: new Date(threat.timestamp),
-        type: threat.threat_type as any,
-        severity: threat.severity >= 8 ? 'critical' : threat.severity >= 6 ? 'high' : threat.severity >= 4 ? 'medium' : 'low',
-        source: threat.source_ip,
-        target: threat.destination_ip,
-        description: threat.description,
+        type: (threat.threat_type || 'malware') as any,
+        severity: (threat.severity || 0) >= 8 ? 'critical' : (threat.severity || 0) >= 6 ? 'high' : (threat.severity || 0) >= 4 ? 'medium' : 'low',
+        source: threat.source_ip || 'Unknown',
+        target: threat.destination_ip || 'Unknown',
+        description: threat.description || 'Backend threat detected',
         status: threat.blocked ? 'contained' : 'detected',
         responseActions: threat.blocked ? ['Block IP address', 'Notify security team'] : ['Investigate source'],
-        affectedSystems: [threat.destination_ip]
+        affectedSystems: threat.destination_ip ? [threat.destination_ip] : []
       }
       
       setIncidents(prev => [incident, ...prev.slice(0, 49)])
@@ -127,11 +146,11 @@ export function useIncidentData() {
       const alert: Alert = {
         id: `ALT-${threat.id}`,
         timestamp: new Date(threat.timestamp),
-        message: threat.description,
-        type: threat.severity >= 8 ? 'critical' : threat.severity >= 6 ? 'error' : 'warning',
+        message: threat.description || 'Backend threat detected',
+        type: (threat.severity || 0) >= 8 ? 'critical' : (threat.severity || 0) >= 6 ? 'error' : 'warning',
         acknowledged: false,
         sourceSystem: 'Backend Threat Detection',
-        riskScore: Math.round(threat.confidence * 100),
+        riskScore: Math.round((threat.confidence || 0.5) * 100),
         isDuplicate: false,
         relatedAlerts: []
       }
@@ -145,21 +164,24 @@ export function useIncidentData() {
       const threatDetection: ThreatDetection = {
         id: `THR-${threat.id}`,
         timestamp: new Date(threat.timestamp),
-        threatType: threat.threat_type.includes('behavioral') ? 'behavioral_anomaly' : 
-                   threat.threat_type.includes('signature') ? 'signature_match' : 'ml_detection',
-        confidence: Math.round(threat.confidence * 100),
-        riskScore: Math.round(threat.confidence * 100),
-        indicators: threat.indicators,
-        affectedAssets: [threat.destination_ip],
+        threatType: (threat.threat_type || '').includes('behavioral') ? 'behavioral_anomaly' : 
+                   (threat.threat_type || '').includes('signature') ? 'signature_match' : 'ml_detection',
+        confidence: Math.round((threat.confidence || 0.5) * 100),
+        riskScore: Math.round((threat.confidence || 0.5) * 100),
+        indicators: Array.isArray(threat.indicators) ? threat.indicators : [],
+        affectedAssets: threat.destination_ip ? [threat.destination_ip] : [],
         mitreTactics: ['Initial Access', 'Execution'],
-        description: threat.description
+        description: threat.description || 'Backend threat detected'
       }
       
       setThreatDetections(prev => [threatDetection, ...prev.slice(0, 29)])
     })
 
     const unsubscribeStats = backendService.onStatsUpdate((stats: BackendStats) => {
-      setBackendStats(stats)
+      // Safety check for stats data
+      if (stats && typeof stats === 'object') {
+        setBackendStats(stats)
+      }
     })
 
     const unsubscribeConnection = backendService.onConnectionChange((connected: boolean) => {
@@ -172,20 +194,26 @@ export function useIncidentData() {
 
     // Set up critical incidents service listeners
     const unsubscribeCriticalIncident = criticalIncidentsService.onCriticalIncidentDetected((incident: CriticalIncident) => {
+      // Safety check for critical incident data
+      if (!incident || !incident.id || !incident.detected_at) {
+        console.warn('Invalid critical incident data received:', incident)
+        return
+      }
+      
       setCriticalIncidents(prev => [incident, ...prev.slice(0, 49)])
       
       // Also add to regular incidents for dashboard display
       const regularIncident: Incident = {
         id: incident.id,
         timestamp: new Date(incident.detected_at),
-        type: incident.incident_type as any,
-        severity: incident.severity as any,
+        type: (incident.incident_type || 'malware') as any,
+        severity: (incident.severity || 'medium') as any,
         source: incident.source_ip || incident.source_system || 'Unknown',
         target: incident.destination_ip || incident.target_system || 'Unknown',
-        description: incident.description,
-        status: incident.status as any,
+        description: incident.description || 'Critical incident detected',
+        status: (incident.status || 'detected') as any,
         responseActions: ['Investigate immediately', 'Notify security team', 'Isolate affected systems'],
-        affectedSystems: incident.affected_systems
+        affectedSystems: Array.isArray(incident.affected_systems) ? incident.affected_systems : []
       }
       
       setIncidents(prev => [regularIncident, ...prev.slice(0, 49)])
@@ -233,13 +261,13 @@ export function useIncidentData() {
   async function fetchAlerts() {
     try {
       const { data, error } = await supabase.from('alerts').select('*').order('timestamp', { ascending: false })
-      if (!error && data) {
+      if (!error && data && Array.isArray(data)) {
         // Transform and validate alert data
         const validAlerts = data
           .filter(alert => alert && alert.id)
           .map(alert => ({
             id: alert.id,
-            timestamp: new Date(alert.created_at || alert.timestamp),
+            timestamp: new Date(alert.created_at || alert.timestamp || Date.now()),
             message: alert.message || alert.title || 'Unknown alert',
             type: alert.alert_type || 'info',
             acknowledged: alert.is_acknowledged || false,
@@ -247,7 +275,7 @@ export function useIncidentData() {
             riskScore: alert.risk_score || 50,
             isDuplicate: alert.is_duplicate || false,
             relatedAlerts: []
-          }))
+          })) as Alert[]
         setAlerts(validAlerts)
       } else {
         console.error('Error fetching alerts:', error)
@@ -263,13 +291,13 @@ export function useIncidentData() {
   async function fetchAlertsFromBackend() {
     try {
       const items = await fetchBackendAlerts(50)
-      if (items && Array.isArray(items) && items.length) {
+      if (items && Array.isArray(items) && items.length > 0) {
         // Transform backend alerts to match frontend format
         const transformedAlerts = items
           .filter(item => item && (item.id || item.timestamp))
           .map(item => ({
             id: item.id || `backend-${Date.now()}-${Math.random()}`,
-            timestamp: new Date(item.timestamp),
+            timestamp: new Date(item.timestamp || Date.now()),
             message: item.message || 'Backend alert',
             type: item.alert_type || 'info',
             acknowledged: item.is_acknowledged || false,
@@ -277,7 +305,7 @@ export function useIncidentData() {
             riskScore: item.risk_score || 50,
             isDuplicate: false,
             relatedAlerts: []
-          }))
+          })) as Alert[]
         setAlerts(transformedAlerts)
       }
     } catch (e) {
@@ -290,9 +318,12 @@ export function useIncidentData() {
   }
 
   const acknowledgeAlert = (alertId: string) => {
-    setAlerts(prev => prev.map(alert => 
-      alert.id === alertId ? { ...alert, acknowledged: true } : alert
-    ))
+    setAlerts(prev => {
+      if (!Array.isArray(prev)) return []
+      return prev.map(alert => 
+        alert && alert.id === alertId ? { ...alert, acknowledged: true } : alert
+      ).filter(alert => alert !== null)
+    })
   }
 
   const resolveIncident = (incidentId: string) => {
@@ -308,9 +339,12 @@ export function useIncidentData() {
           console.error('Error updating incident:', error)
         } else {
           // Update local state
-          setIncidents(prev => prev.map(incident => 
-            incident.id === incidentId ? { ...incident, status: 'resolved' as const } : incident
-          ))
+          setIncidents(prev => {
+            if (!Array.isArray(prev)) return []
+            return prev.map(incident => 
+              incident && incident.id === incidentId ? { ...incident, status: 'resolved' as const } : incident
+            ).filter(incident => incident !== null)
+          })
         }
       } catch (error) {
         console.error('Failed to update incident:', error)
@@ -318,9 +352,12 @@ export function useIncidentData() {
     }
     
     updateIncidentInDb()
-    setIncidents(prev => prev.map(incident => 
-      incident.id === incidentId ? { ...incident, status: 'resolved' as const } : incident
-    ))
+    setIncidents(prev => {
+      if (!Array.isArray(prev)) return []
+      return prev.map(incident => 
+        incident && incident.id === incidentId ? { ...incident, status: 'resolved' as const } : incident
+      ).filter(incident => incident !== null)
+    })
   }
 
   return { 

@@ -44,8 +44,8 @@ export function AlertPanel({ alerts }: AlertPanelProps) {
     }
   };
 
-  const unacknowledgedCount = displayAlerts.filter(a => !a.acknowledged).length;
-  const duplicateCount = alerts.filter(a => a.isDuplicate).length;
+  const unacknowledgedCount = displayAlerts.filter(a => a && !a.acknowledged).length;
+  const duplicateCount = alerts.filter(a => a && a.isDuplicate).length;
 
   return (
     <div className="bg-gray-800 rounded-xl p-6 border border-gray-700">
@@ -71,31 +71,31 @@ export function AlertPanel({ alerts }: AlertPanelProps) {
       {/* Alert Statistics */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
         <div className="bg-gray-900 rounded-lg p-3">
-          <div className="text-red-400 text-lg font-bold">{displayAlerts.filter(a => a.type === 'critical').length}</div>
+          <div className="text-red-400 text-lg font-bold">{displayAlerts.filter(a => a && a.type === 'critical').length}</div>
           <div className="text-gray-400 text-xs">Critical</div>
         </div>
         <div className="bg-gray-900 rounded-lg p-3">
-          <div className="text-orange-400 text-lg font-bold">{displayAlerts.filter(a => a.type === 'error').length}</div>
+          <div className="text-orange-400 text-lg font-bold">{displayAlerts.filter(a => a && a.type === 'error').length}</div>
           <div className="text-gray-400 text-xs">Error</div>
         </div>
         <div className="bg-gray-900 rounded-lg p-3">
-          <div className="text-blue-400 text-lg font-bold">{correlatedAlerts.length}</div>
+          <div className="text-blue-400 text-lg font-bold">{correlatedAlerts.filter(a => a && a.correlationId).length}</div>
           <div className="text-gray-400 text-xs">Correlated</div>
         </div>
         <div className="bg-gray-900 rounded-lg p-3">
-          <div className="text-green-400 text-lg font-bold">{displayAlerts.filter(a => a.riskScore > 70).length}</div>
+          <div className="text-green-400 text-lg font-bold">{displayAlerts.filter(a => a && typeof a.riskScore === 'number' && a.riskScore > 70).length}</div>
           <div className="text-gray-400 text-xs">High Risk</div>
           </div>
       </div>
 
       <div className="space-y-3 max-h-80 overflow-y-auto">
-        {!displayAlerts || displayAlerts.length === 0 ? (
+        {!displayAlerts || !Array.isArray(displayAlerts) || displayAlerts.length === 0 ? (
           <div className="text-center py-8">
             <CheckCircle className="h-12 w-12 text-green-400 mx-auto mb-3" />
             <p className="text-gray-400">No active alerts</p>
           </div>
         ) : (
-          displayAlerts.filter(alert => alert && alert.id).map((alert) => (
+          displayAlerts.filter(alert => alert && alert.id && alert.message && alert.type && alert.timestamp).map((alert) => (
             <div
               key={alert.id}
               className={`p-4 rounded-lg border ${getAlertBgColor(alert.type)} ${
@@ -106,21 +106,21 @@ export function AlertPanel({ alerts }: AlertPanelProps) {
                 <div className="flex items-start space-x-3">
                   {getAlertIcon(alert.type)}
                   <div className="flex-1">
-                    <p className="text-white text-sm font-medium">{alert.message}</p>
+                    <p className="text-white text-sm font-medium">{alert.message || 'No message'}</p>
                     <div className="flex items-center space-x-4 mt-1 text-xs text-gray-400">
-                      <span>{alert.timestamp.toLocaleString()}</span>
-                      <span>Source: {alert.sourceSystem}</span>
+                      <span>{alert.timestamp ? alert.timestamp.toLocaleString() : 'Unknown time'}</span>
+                      <span>Source: {alert.sourceSystem || 'Unknown'}</span>
                       <span className={`font-medium ${
-                        alert.riskScore > 70 ? 'text-red-400' : 
-                        alert.riskScore > 40 ? 'text-yellow-400' : 'text-green-400'
+                        (alert.riskScore || 0) > 70 ? 'text-red-400' : 
+                        (alert.riskScore || 0) > 40 ? 'text-yellow-400' : 'text-green-400'
                       }`}>
-                        Risk: {alert.riskScore}
+                        Risk: {alert.riskScore || 0}
                       </span>
                     </div>
                     {alert.correlationId && (
                       <div className="mt-2">
                         <span className="text-xs px-2 py-1 bg-blue-900/50 text-blue-300 rounded">
-                          Correlated ({alert.relatedAlerts.length + 1} alerts)
+                          Correlated ({(alert.relatedAlerts?.length || 0) + 1} alerts)
                         </span>
                       </div>
                     )}

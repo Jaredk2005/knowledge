@@ -47,7 +47,8 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
   const safeAnomalies = anomalies || [];
   const safeNetworkTraffic = networkTraffic || [];
 
-  const criticalIncidentsCount = criticalIncidents?.length || 0;
+  const safeCriticalIncidents = criticalIncidents || [];
+  const criticalIncidentsCount = safeCriticalIncidents.length;
   const localCriticalIncidents = safeIncidents.filter(i => i.severity === 'critical').length;
   const highIncidents = safeIncidents.filter(i => i.severity === 'high').length;
   const activeLocalIncidents = safeIncidents.filter(i => i.status !== 'resolved').length;
@@ -150,32 +151,32 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
                   <div className="text-gray-400 text-sm">Backend Threats</div>
                 </div>
               </div>
-              {backendConnected && backendStats && (
+              {backendConnected && backendStats && typeof backendStats === 'object' && (
                 <div className="bg-blue-900/20 border border-blue-700/50 rounded-lg p-4">
                   <h4 className="text-sm font-medium text-blue-300 mb-2">Backend Statistics</h4>
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
                     <div>
                       <span className="text-gray-400">Total Threats:</span>
-                      <span className="text-white ml-1">{backendStats.total_threats}</span>
+                      <span className="text-white ml-1">{backendStats.total_threats || 0}</span>
                     </div>
                     <div>
                       <span className="text-gray-400">Blocked IPs:</span>
-                      <span className="text-white ml-1">{backendStats.blocked_ips}</span>
+                      <span className="text-white ml-1">{backendStats.blocked_ips || 0}</span>
                     </div>
                     <div>
                       <span className="text-gray-400">Last Hour:</span>
-                      <span className="text-white ml-1">{backendStats.threats_last_hour}</span>
+                      <span className="text-white ml-1">{backendStats.threats_last_hour || 0}</span>
                     </div>
                     <div>
                       <span className="text-gray-400">Last 24h:</span>
-                      <span className="text-white ml-1">{backendStats.threats_last_24h}</span>
+                      <span className="text-white ml-1">{backendStats.threats_last_24h || 0}</span>
                     </div>
                   </div>
                 </div>
               )}
             </div>
             <ThreatMap incidents={safeIncidents} />
-            <IncidentList incidents={safeIncidents.filter(i => i.status !== 'resolved')} />
+            <IncidentList incidents={safeIncidents.filter(i => i && i.status && i.status !== 'resolved')} />
           </div>
         );
       case 'critical':
@@ -198,7 +199,7 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
                 </div>
               </div>
             </div>
-            <IncidentList incidents={safeIncidents.filter(i => i.severity === 'critical' || i.severity === 'high')} />
+            <IncidentList incidents={safeIncidents.filter(i => i && i.severity && (i.severity === 'critical' || i.severity === 'high'))} />
           </div>
         );
       case 'network':
@@ -210,13 +211,13 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="bg-gray-900 rounded-lg p-4">
                   <div className="text-blue-400 text-xl font-bold">
-                    {safeNetworkTraffic.filter(t => t.suspicious).length}
+                    {safeNetworkTraffic.filter(t => t && t.suspicious).length}
                   </div>
                   <div className="text-gray-400 text-sm">Suspicious Connections</div>
                 </div>
                 <div className="bg-gray-900 rounded-lg p-4">
                   <div className="text-green-400 text-xl font-bold">
-                    {Math.round((safeNetworkTraffic.reduce((sum, t) => sum + t.bytes, 0) / 1024 / 1024) * 100) / 100}MB
+                    {safeAlerts.filter(a => a && a.isDuplicate).length}
                   </div>
                   <div className="text-gray-400 text-sm">Total Data Volume</div>
                 </div>
@@ -232,25 +233,25 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <div className="bg-green-900/30 rounded-lg p-4">
                   <div className="text-green-400 text-xl font-bold">
-                    {safeSystemStatus.filter(s => s.status === 'online').length}
+                    {safeSystemStatus.filter(s => s && s.status === 'online').length}
                   </div>
                   <div className="text-gray-400 text-sm">Online</div>
                 </div>
                 <div className="bg-yellow-900/30 rounded-lg p-4">
                   <div className="text-yellow-400 text-xl font-bold">
-                    {safeSystemStatus.filter(s => s.status === 'warning').length}
+                    {safeSystemStatus.filter(s => s && s.status === 'warning').length}
                   </div>
                   <div className="text-gray-400 text-sm">Warning</div>
                 </div>
                 <div className="bg-red-900/30 rounded-lg p-4">
                   <div className="text-red-400 text-xl font-bold">
-                    {safeSystemStatus.filter(s => s.status === 'error').length}
+                    {safeSystemStatus.filter(s => s && s.status === 'error').length}
                   </div>
                   <div className="text-gray-400 text-sm">Error</div>
                 </div>
                 <div className="bg-gray-700 rounded-lg p-4">
                   <div className="text-gray-400 text-xl font-bold">
-                    {safeSystemStatus.filter(s => s.status === 'offline').length}
+                    {safeSystemStatus.filter(s => s && s.status === 'offline').length}
                   </div>
                   <div className="text-gray-400 text-sm">Offline</div>
                 </div>
@@ -267,25 +268,25 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
                 <div className="bg-red-900/30 rounded-lg p-4">
                   <div className="text-red-400 text-xl font-bold">
-                    {safeAlerts.filter(a => a.type === 'critical').length}
+                    {safeAlerts.filter(a => a && a.type === 'critical').length}
                   </div>
                   <div className="text-gray-400 text-sm">Critical</div>
                 </div>
                 <div className="bg-orange-900/30 rounded-lg p-4">
                   <div className="text-orange-400 text-xl font-bold">
-                    {safeAlerts.filter(a => a.type === 'error').length}
+                    {safeAlerts.filter(a => a && a.type === 'error').length}
                   </div>
                   <div className="text-gray-400 text-sm">Error</div>
                 </div>
                 <div className="bg-yellow-900/30 rounded-lg p-4">
                   <div className="text-yellow-400 text-xl font-bold">
-                    {safeAlerts.filter(a => a.type === 'warning').length}
+                    {safeAlerts.filter(a => a && a.type === 'warning').length}
                   </div>
                   <div className="text-gray-400 text-sm">Warning</div>
                 </div>
                 <div className="bg-blue-900/30 rounded-lg p-4">
                   <div className="text-blue-400 text-xl font-bold">
-                    {safeAlerts.filter(a => !a.acknowledged).length}
+                    {safeAlerts.filter(a => a && !a.acknowledged).length}
                   </div>
                   <div className="text-gray-400 text-sm">Unacknowledged</div>
                 </div>
@@ -310,13 +311,13 @@ export function Dashboard({ user, onLogout }: DashboardProps) {
                 </div>
                 <div className="bg-yellow-900/30 rounded-lg p-4">
                   <div className="text-yellow-400 text-xl font-bold">
-                    {safeIncidents.filter(i => i.severity === 'medium').length}
+                    {safeIncidents.filter(i => i && i.severity === 'medium').length}
                   </div>
                   <div className="text-gray-400 text-sm">Medium</div>
                 </div>
                 <div className="bg-green-900/30 rounded-lg p-4">
                   <div className="text-green-400 text-xl font-bold">
-                    {safeIncidents.filter(i => i.status === 'resolved').length}
+                    {safeIncidents.filter(i => i && i.status === 'resolved').length}
                   </div>
                   <div className="text-gray-400 text-sm">Resolved</div>
                 </div>
